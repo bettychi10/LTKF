@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>跑關表產生器｜小隊 × 關卡輪轉排程</title>
+<style>
+  :root{
+    --bg:#fff4f9; --card:#ffffff; --ink:#2b1a25; --muted:#8f7280; --line:#f8dbe8;
+    --accent:#d6337a; --accent-soft:#ffe5f1; --ok:#0f9d58; --warn:#c2760a; --err:#c62b52;
+    --shadow:0 1px 2px rgba(130,20,80,.06), 0 10px 26px -14px rgba(170,30,105,.30);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:radial-gradient(1200px 620px at 8% -12%, #ffe0ee 0%, #fff7fb 42%, var(--bg) 100%);
+    color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    line-height:1.6; padding:28px 18px 64px;
+  }
+  .wrap{max-width:1120px;margin:0 auto}
+  header.hero{margin-bottom:22px}
+  .kicker{font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  h1{margin:6px 0 6px;font-size:clamp(22px,3.4vw,32px);letter-spacing:-.01em}
+  h1 .dot{color:var(--accent)}
+  .sub{color:var(--muted);margin:0;font-size:14.5px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:18px}
+  .panel + .panel{margin-top:16px}
+  .controls{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:6px;min-width:132px}
+  .field label{font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.02em}
+  input[type=number],select{
+    font:inherit;font-size:15px;padding:9px 11px;border-radius:11px;border:1px solid var(--line);
+    background:#fffafd;color:var(--ink);width:100%;transition:.15s
+  }
+  input[type=number]:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);background:#fff}
+  button{
+    font:inherit;font-weight:700;font-size:15px;padding:10px 20px;border-radius:12px;border:1px solid transparent;
+    background:linear-gradient(180deg,#e64a90,#d6337a);color:#fff;cursor:pointer;transition:.15s;
+    box-shadow:0 8px 18px -10px rgba(214,51,122,.95)
+  }
+  button:hover{filter:brightness(1.05)}
+  button:active{transform:translateY(1px)}
+  button.ghost{background:#fff;color:var(--ink);border-color:var(--line);box-shadow:none}
+  button.ghost:hover{background:#fff3f8}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  .issues{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+  .issues li{background:#fff1f6;border:1px solid #ffd2e3;color:#a11f4f;border-radius:11px;padding:10px 13px;font-size:14px}
+  .status{font-size:14px;color:var(--muted);display:flex;align-items:center;gap:9px}
+  .spinner{width:14px;height:14px;border-radius:50%;border:2px solid #ffd6e8;border-top-color:var(--accent);animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .badge{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:700;padding:5px 12px;border-radius:999px}
+  .badge.ok{background:#e9f7ef;color:#0b6b3d;border:1px solid #c6ead6}
+  .badge.warn{background:#fff6e5;color:#8a5606;border:1px solid #ffe2b8}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;margin:16px 0 4px}
+  .card{background:linear-gradient(180deg,#fffafd,#fff4f9);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+  .card .k{font-size:12px;color:var(--muted);font-weight:700}
+  .card .v{font-size:20px;font-weight:800;letter-spacing:-.01em;margin-top:2px;color:#3a1f2d}
+  .card .v small{font-size:12px;font-weight:600;color:var(--muted);margin-left:3px}
+  .tabs{display:flex;gap:6px;margin:20px 0 14px;flex-wrap:wrap}
+  .tab{
+    font:inherit;font-size:14px;font-weight:700;padding:8px 15px;border-radius:11px;background:#fdeef5;
+    color:var(--muted);border:1px solid transparent;cursor:pointer;box-shadow:none
+  }
+  .tab.active{background:var(--accent-soft);color:var(--accent);border-color:#ffc9e1}
+  .scroller{overflow-x:auto;padding-bottom:4px}
+  table.grid{border-collapse:separate;border-spacing:5px;font-size:14px;width:100%}
+  table.grid th{
+    font-size:12.5px;font-weight:700;color:var(--muted);padding:6px 8px;white-space:nowrap;background:transparent
+  }
+  table.grid th.corner{text-align:left;color:#b596a5}
+  table.grid th.rowhead{text-align:right;padding-right:10px;color:var(--ink);font-weight:750}
+  table.grid td.cell{
+    background:#fff8fc;border:1px solid var(--line);border-radius:12px;padding:9px 10px;text-align:center;min-width:104px;vertical-align:middle
+  }
+  table.grid td.idle{background:#fbeef4;border-style:dashed;border-color:#f3d3e2}
+  table.grid td.bad{background:#fff1f6;border-color:#ffc9dd}
+  .idleText{color:#c4a3b3;font-size:12.5px;letter-spacing:.04em}
+  .match{display:inline-flex;align-items:center;gap:6px}
+  .chip{
+    display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;padding:0 7px;border-radius:999px;
+    font-size:13px;font-weight:800;
+    background:hsl(var(--h) 88% 94%); color:hsl(var(--h) 52% 34%); border:1px solid hsl(var(--h) 78% 87%)
+  }
+  .vs{font-size:11.5px;color:#bb98a8;font-weight:800;letter-spacing:.04em}
+  td.foot{text-align:center;font-size:12.5px;color:var(--muted);font-weight:700;padding:4px}
+  table.teams td.cell{min-width:92px;font-size:13px;line-height:1.35}
+  .opp{font-size:12px;color:var(--muted)}
+  .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+  .statbox{background:#fff8fc;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+  .statbox h4{margin:0 0 10px;font-size:14px}
+  .bars{list-style:none;margin:0;padding:0;display:grid;gap:8px;font-size:13px}
+  .bars li{display:grid;grid-template-columns:86px 1fr 54px;align-items:center;gap:8px}
+  .barlabel{color:var(--muted);font-weight:600}
+  .bar{height:9px;background:#fbe4ee;border-radius:99px;overflow:hidden}
+  .bar i{display:block;height:100%;background:linear-gradient(90deg,#ff9ecb,#d6337a);border-radius:99px}
+  .barval{text-align:right;font-weight:800;color:var(--ink)}
+  .pairstats{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+  .pairstats li{background:#fff;border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12.5px;display:inline-flex;align-items:center;gap:5px}
+  .muted{color:var(--muted);font-size:13.5px;margin:0}
+  textarea{
+    width:100%;min-height:190px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+    border:1px solid var(--line);border-radius:12px;padding:12px;background:#fffafd;color:var(--ink);resize:vertical
+  }
+  .notes{margin-top:22px}
+  .notes h3{margin:0 0 10px;font-size:16px}
+  .notes ul{margin:0;padding-left:20px;font-size:14px;color:#3a2a33}
+  .notes li{margin:6px 0}
+  .notes code{background:#ffe9f3;color:#a11f4f;padding:1px 6px;border-radius:6px;font-size:12.5px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .toast{
+    position:fixed;left:50%;bottom:26px;transform:translate(-50%,14px);background:#3a1f2d;color:#fff;
+    font-size:13.5px;padding:9px 18px;border-radius:999px;opacity:0;pointer-events:none;transition:.22s;z-index:9
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  [hidden]{display:none !important}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="kicker">Rotation Scheduler</div>
+    <h1>跑關表產生器<span class="dot">.</span></h1>
+    <p class="sub">輸入小隊數與關卡數，自動排出「每隊每關剛好去一次、全程沒人休息、對戰組合不重複太多次」的輪轉表。</p>
+  </header>
+
+  <section class="panel">
+    <div class="controls">
+      <div class="field">
+        <label for="teams">小隊數（偶數）</label>
+        <input id="teams" type="number" value="6" min="2" max="24" step="2">
+      </div>
+      <div class="field">
+        <label for="stations">關卡數</label>
+        <input id="stations" type="number" value="5" min="1" max="24" step="1">
+      </div>
+      <div class="field">
+        <label for="repeat">同一組合最多對抗</label>
+        <select id="repeat">
+          <option value="1">1 次（最嚴格）</option>
+          <option value="2" selected>2 次</option>
+          <option value="3">3 次</option>
+        </select>
+      </div>
+      <button id="go">產生跑關表</button>
+      <button id="again" class="ghost">換一種排法</button>
+    </div>
+    <div id="issues" style="margin-top:14px"></div>
+    <div id="status" class="status" style="margin-top:14px"></div>
+  </section>
+
+  <section id="result" hidden>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div id="verdict"></div>
+        <div class="muted" id="meta"></div>
+      </div>
+      <div class="cards" id="cards"></div>
+
+      <div class="tabs">
+        <button class="tab active" data-view="main">關卡視圖</button>
+        <button class="tab" data-view="teams">小隊視圖</button>
+        <button class="tab" data-view="stats">對戰統計</button>
+        <button class="tab" data-view="csv">CSV</button>
+      </div>
+
+      <div id="view-main" class="scroller"></div>
+      <div id="view-teams" class="scroller" hidden></div>
+      <div id="view-stats" hidden></div>
+      <div id="view-csv" hidden>
+        <div class="row" style="margin-bottom:10px">
+          <button id="copyCsv" class="ghost">複製 CSV</button>
+          <span class="muted">貼到 Excel／Google Sheets 即可（逗號分隔）</span>
+        </div>
+        <textarea id="csvBox" spellcheck="false" readonly></textarea>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel notes">
+    <h3>排表規則與可行性（先看這段就不會卡住）</h3>
+    <ul>
+      <li><b>回合數自動等於關卡數。</b>因為每隊每關都要去一次、又不能有人休息，所以「跑幾回合」必然等於「有幾關」。</li>
+      <li><b>各關休息次數一定相同，不用特別安排。</b>每隊都造訪每關一次 → 每個關卡總共被 <code>小隊數</code> 隊造訪 → 每關每回合只能放 2 隊 → 每關固定使用 <code>小隊數÷2</code> 回合、休息 <code>關卡數 − 小隊數÷2</code> 回合。</li>
+      <li><b>小隊數必須是偶數：</b>每回合所有隊伍都要下場兩兩對抗，否則就會出現輪空（違反條件 4）。</li>
+      <li><b>關卡數下限</b> = <code>小隊數 ÷ 2</code>（該回合同時開打的場地數）。</li>
+      <li><b>關卡數上限</b> = <code>允許重複次數 ×(小隊數 − 1)</code>。推導：總場次 = 關卡數 × 小隊數/2，而每種對戰組合最多出現 k 次，組合共 <code>小隊數×(小隊數−1)/2</code> 種，兩式相除就得到這個上限。</li>
+      <li><b>演算法：</b>搜尋空間直接鎖定在「每隊每關剛好去一次」（隨機排列＋同隊換關的交換動作），因此條件 2、3、4 由結構保證，再用模擬退火把「同關卡同時只能 2 隊」與「對戰重複次數」壓到 0。</li>
+    </ul>
+  </section>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ============ 小工具 ============ */
+const $ = s => document.querySelector(s);
+const teamsEl = $('#teams'), stationsEl = $('#stations'), repeatEl = $('#repeat');
+const goBtn = $('#go'), againBtn = $('#again');
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ============ 成本函數 ============ */
+const WP = 5;
+function penC(c){                    // 同一關卡在同一回合的人數必須是 0 或 2
+  if (c === 0 || c === 2) return 0;
+  if (c === 1) return 2;
+  return 2 * (c - 2) + 1;
+}
+function penP(m, k){                 // 同一組合對戰次數上限
+  if (m <= k) return m >= 2 ? 0.05 * (m - 1) : 0;   // 輕微偏好「全新組合」
+  return 1 + 2 * (m - k);
+}
+
+/* ============ 求解器 ============ */
+function makeSolver(N, M, k, seed){
+  const rnd = mulberry32(seed >>> 0);
+  const NM = N * M, MM = M * M;
+  const X = new Int8Array(NM);        // X[team*M+station] = 回合
+  const cnt = new Int32Array(MM);     // cnt[round*M+station] = 該關該回合的人數
+  const cellPair = new Int32Array(MM);
+  const meet = new Int32Array(N * N);
+  let cPen = 0, pPen = 0;
+
+  const keyOf = (u, v) => (u < v ? u * N + v : v * N + u);
+
+  function setMeet(key, d){
+    const before = meet[key];
+    meet[key] = before + d;
+    pPen += penP(meet[key], k) - penP(before, k);
+  }
+  function membersOf(r, s){
+    const out = [];
+    for (let t = 0; t < N; t++) if (X[t * M + s] === r) out.push(t);
+    return out;
+  }
+  function dropCell(idx){
+    const key = cellPair[idx];
+    if (key >= 0){ setMeet(key, -1); cellPair[idx] = -1; }
+  }
+  function addCell(idx){
+    if (cnt[idx] !== 2) return;
+    const r = (idx / M) | 0, s = idx - r * M;
+    const mem = membersOf(r, s);
+    if (mem.length !== 2) return;
+    const key = keyOf(mem[0], mem[1]);
+    cellPair[idx] = key;
+    setMeet(key, 1);
+  }
+
+  function init(){
+    cnt.fill(0); cellPair.fill(-1); meet.fill(0); cPen = 0; pPen = 0;
+    const perm = new Int8Array(M);
+    for (let t = 0; t < N; t++){
+      for (let i = 0; i < M; i++) perm[i] = i;
+      for (let i = M - 1; i > 0; i--){
+        const j = (rnd() * (i + 1)) | 0;
+        const tmp = perm[i]; perm[i] = perm[j]; perm[j] = tmp;
+      }
+      for (let s = 0; s < M; s++) X[t * M + s] = perm[s];
+    }
+    for (let t = 0; t < N; t++)
+      for (let s = 0; s < M; s++) cnt[X[t * M + s] * M + s]++;
+    for (let i = 0; i < MM; i++) cPen += penC(cnt[i]);
+    for (let i = 0; i < MM; i++) if (cnt[i] === 2) addCell(i);
+  }
+
+  // 同一隊的兩個關卡互換回合（保證「每隊每關剛好一次」不被破壞）
+  function swapCells(t, s1, s2){
+    const a = X[t * M + s1], b = X[t * M + s2];
+    const i1 = a * M + s1, i2 = b * M + s1, i3 = b * M + s2, i4 = a * M + s2;
+    const cells = [i1, i2, i3, i4];
+    for (let q = 0; q < 4; q++) dropCell(cells[q]);
+    for (let q = 0; q < 4; q++) cPen -= penC(cnt[cells[q]]);
+    cnt[i1]--; cnt[i2]++; cnt[i3]--; cnt[i4]++;
+    for (let q = 0; q < 4; q++) cPen += penC(cnt[cells[q]]);
+    X[t * M + s1] = b; X[t * M + s2] = a;
+    for (let q = 0; q < 4; q++) addCell(cells[q]);
+  }
+
+  function runAttempt(iters){
+    init();
+    let cur = cPen + WP * pPen;
+    let best = cur, bestX = X.slice();
+    if (cur <= 0) return bestX;
+    const T0 = 3, T1 = 0.05, lr = Math.log(T1 / T0);
+    for (let i = 0; i < iters; i++){
+      const T = T0 * Math.exp(lr * i / iters);
+      const t = (rnd() * N) | 0;
+      const s1 = (rnd() * M) | 0;
+      const s2 = (rnd() * M) | 0;
+      if (s1 === s2) continue;
+      if (X[t * M + s1] === X[t * M + s2]) continue;
+      swapCells(t, s1, s2);
+      const nxt = cPen + WP * pPen;
+      const d = nxt - cur;
+      if (d <= 0 || rnd() < Math.exp(-d / T)){
+        cur = nxt;
+        if (nxt < best - 1e-9){ best = nxt; bestX = X.slice(); }
+        if (best <= 0) return bestX;
+      } else {
+        swapCells(t, s1, s2);   // 還原（同一個交換動作即反向）
+      }
+    }
+    return bestX;
+  }
+  return { runAttempt };
+}
+
+/* ============ 獨立驗證 / 統計 ============ */
+function evaluate(X, N, M, k){
+  const cnt = new Int32Array(M * M);
+  for (let t = 0; t < N; t++)
+    for (let s = 0; s < M; s++) cnt[X[t * M + s] * M + s]++;
+
+  let cPen = 0;
+  for (let i = 0; i < M * M; i++) cPen += penC(cnt[i]);
+
+  const meet = new Int32Array(N * N);
+  const table = [];
+  let pairsTotal = 0;
+
+  for (let r = 0; r < M; r++){
+    const row = [];
+    for (let s = 0; s < M; s++){
+      const mem = [];
+      for (let t = 0; t < N; t++) if (X[t * M + s] === r) mem.push(t);
+      row.push(mem);
+      if (mem.length === 2){
+        const u = Math.min(mem[0], mem[1]), v = Math.max(mem[0], mem[1]);
+        meet[u * N + v]++;
+        pairsTotal++;
+      }
+    }
+    table.push(row);
+  }
+
+  let excess = 0, maxMeet = 0, repeatPairs = 0, uniquePairs = 0;
+  for (let u = 0; u < N; u++) for (let v = u + 1; v < N; v++){
+    const m = meet[u * N + v];
+    if (m > maxMeet) maxMeet = m;
+    if (m > k) excess += m - k;
+    if (m === 2) repeatPairs++;
+    if (m === 1) uniquePairs++;
+  }
+  return { cnt, meet, table, cPen, excess, maxMeet, pairsTotal, repeatPairs, uniquePairs };
+}
+
+/* ============ 非同步求解（分行執行，UI 不會卡） ============ */
+async function solveAsync(N, M, k, seed, onAttempt){
+  const solver = makeSolver(N, M, k, seed);
+  const deadline = performance.now() + 2600;
+  const iters = Math.max(20000, Math.min(150000, Math.round(N * M * 2500)));
+  let bestX = null, bestEv = null, bestScore = Infinity, attempts = 0;
+
+  for (;;){
+    attempts++;
+    const cand = solver.runAttempt(iters);
+    const ev = evaluate(cand, N, M, k);
+    const score = ev.cPen * 1000 + ev.excess * 100 + ev.repeatPairs;
+    if (score < bestScore){ bestScore = score; bestX = cand; bestEv = ev; }
+    if (ev.cPen === 0 && ev.excess === 0) break;
+    if (attempts >= 60 || performance.now() > deadline) break;
+    if (onAttempt) onAttempt(attempts);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  return { X: bestX, ev: bestEv, attempts };
+}
+
+/* ============ 條件檢查 ============ */
+function validate(N, M, k){
+  const out = [];
+  if (!Number.isFinite(N) || N < 2) out.push('小隊數至少 2 隊。');
+  else if (N % 2 !== 0) out.push(`小隊數必須是偶數（目前 ${N} 隊）。每回合所有人都要下場兩兩對抗，奇數隊一定有人輪空，違反「不能有小隊休息」。`);
+  if (!Number.isFinite(M) || M < 1) out.push('關卡數至少 1 關。');
+
+  if (N >= 2 && M >= 1){
+    if (M < N / 2) out.push(`關卡數不足：${N} 隊每回合需要同時開 ${N / 2} 關，至少要有 ${N / 2} 關。`);
+    if (M > k * (N - 1)) out.push(`關卡數超出上限：每組最多對戰 ${k} 次時，${N} 隊最多只能排出 ${k * (N - 1)} 回合（＝${k}×(${N}−1)）。請減少關卡數，或把「最多對抗次數」放寬。`);
+  }
+  return out;
+}
+
+/* ============ 畫面渲染 ============ */
+function hueOf(t, N){
+  if (N <= 8){
+    // 粉紅 → 玫瑰 → 珊瑚 的漸層
+    return Math.round((322 + (t * 78) / Math.max(1, N - 1)) % 360);
+  }
+  return Math.round((t * 137.5 + 330) % 360);
+}
+function chip(t, N){
+  return `<span class="chip" style="--h:${hueOf(t, N)}">${t + 1}</span>`;
+}
+
+const last = { ev: null, N: 0, M: 0, k: 2, seed: 0 };
+
+function renderMain(ev, N, M){
+  let html = '<table class="grid"><thead><tr><th class="corner">回合 ＼ 關卡</th>';
+  for (let s = 0; s < M; s++) html += `<th>第 ${s + 1} 關</th>`;
+  html += '</tr></thead><tbody>';
+
+  for (let r = 0; r < M; r++){
+    html += `<tr><th class="rowhead">第 ${r + 1} 回合</th>`;
+    for (let s = 0; s < M; s++){
+      const mem = ev.table[r][s];
+      if (mem.length === 2){
+        html += `<td class="cell"><div class="match">${chip(mem[0], N)}<span class="vs">vs</span>${chip(mem[1], N)}</div></td>`;
+      } else if (mem.length === 0){
+        html += '<td class="cell idle"><span class="idleText">空關</span></td>';
+      } else {
+        html += `<td class="cell bad">${mem.map(t => chip(t, N)).join(' ')}</td>`;
+      }
+    }
+    html += '</tr>';
+  }
+
+  html += '</tbody><tfoot><tr><th class="rowhead">休息回合數</th>';
+  for (let s = 0; s < M; s++){
+    let used = 0;
+    for (let r = 0; r < M; r++) if (ev.table[r][s].length > 0) used++;
+    html += `<td class="foot">${M - used} 次</td>`;
+  }
+  html += '</tr></tfoot></table>';
+  return html;
+}
+
+function renderTeams(ev, N, M){
+  let html = '<table class="grid teams"><thead><tr><th class="corner">小隊 ＼ 回合</th>';
+  for (let r = 0; r < M; r++) html += `<th>第 ${r + 1} 回合</th>`;
+  html += '</tr></thead><tbody>';
+
+  for (let t = 0; t < N; t++){
+    html += `<tr><th class="rowhead">${chip(t, N)}</th>`;
+    for (let r = 0; r < M; r++){
+      let station = -1, opp = -1;
+      for (let s = 0; s < M; s++){
+        const mem = ev.table[r][s];
+        if (mem.indexOf(t) >= 0){
+          station = s;
+          for (let q = 0; q < mem.length; q++) if (mem[q] !== t) opp = mem[q];
+          break;
+        }
+      }
+      if (station < 0) html += '<td class="cell bad">未安排</td>';
+      else html += `<td class="cell">第 ${station + 1} 關<br><span class="opp">${opp >= 0 ? 'vs ' + chip(opp, N) : '—'}</span></td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  return html;
+}
+
+function renderStats(ev, N, M, k){
+  const total = N * (N - 1) / 2;
+  const dist = {};
+  const repeats = [];
+  for (let u = 0; u < N; u++) for (let v = u + 1; v < N; v++){
+    const m = ev.meet[u * N + v];
+    dist[m] = (dist[m] || 0) + 1;
+    if (m >= 2) repeats.push({ u, v, m });
+  }
+  repeats.sort((a, b) => b.m - a.m || a.u - b.u);
+
+  let html = '<div class="statgrid"><div class="statbox"><h4>對戰組合重複分布</h4><ul class="bars">';
+  Object.keys(dist).map(Number).sort((a, b) => a - b).forEach(key => {
+    const pct = Math.round(dist[key] / total * 100);
+    html += `<li><span class="barlabel">對戰 ${key} 次</span><span class="bar"><i style="width:${Math.max(pct, 3)}%"></i></span><span class="barval">${dist[key]} 組</span></li>`;
+  });
+  html += '</ul></div>';
+
+  html += '<div class="statbox"><h4>重複對戰的組合</h4>';
+  if (!repeats.length){
+    html += '<p class="muted">沒有任何組合對戰超過 1 次 🎉</p>';
+  } else {
+    html += '<ul class="pairstats">';
+    repeats.forEach(it => {
+      const over = it.m > k;
+      html += `<li${over ? ' style="border-color:#ffc9dd;background:#fff1f6"' : ''}>${chip(it.u, N)} vs ${chip(it.v, N)} <b>${it.m} 次</b></li>`;
+    });
+    html += '</ul>';
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function buildCSV(ev, N, M){
+  const lines = [];
+  const head = ['回合'];
+  for (let s = 0; s < M; s++) head.push(`第${s + 1}關`);
+  lines.push(head.join(','));
+  for (let r = 0; r < M; r++){
+    const line = [`第${r + 1}回合`];
+    for (let s = 0; s < M; s++){
+      const mem = ev.table[r][s];
+      if (mem.length === 2) line.push(`${mem[0] + 1}隊 vs ${mem[1] + 1}隊`);
+      else if (mem.length === 0) line.push('空關');
+      else line.push(mem.map(t => (t + 1) + '隊').join('/'));
+    }
+    lines.push(line.join(','));
+  }
+  return lines.join('\n');
+}
+
+function render(res, N, M, k, seed){
+  const ev = res.ev;
+  const valid = ev && ev.cPen === 0 && ev.excess === 0;
+
+  last.ev = ev; last.N = N; last.M = M; last.k = k; last.seed = seed;
+  if (!ev){ $('#status').textContent = '沒有取得結果，請調整參數再試。'; return; }
+
+  $('#result').hidden = false;
+  $('#status').innerHTML = `<span class="badge ${valid ? 'ok' : 'warn'}">${valid ? '✅ 已找到符合條件的排法' : '⚠️ 目前排法未完全符合'}</span>`;
+
+  $('#verdict').innerHTML = valid
+    ? `<span class="badge ok">✅ 全部條件符合</span>`
+    : `<span class="badge warn">⚠️ 未完全符合（下方紅字處需人工調整）</span>`;
+  $('#meta').textContent = `${N} 隊 × ${M} 關 ｜ 隨機種子 ${seed} ｜ 嘗試 ${res.attempts} 輪`;
+
+  const restPerStation = M - N / 2;
+  const cards = [
+    ['回合數', M + ' <small>回合</small>'],
+    ['總場次', ev.pairsTotal + ' <small>場</small>'],
+    ['每關休息', restPerStation + ' <small>回合</small>'],
+    ['每隊休息', '0 <small>回合</small>'],
+    ['最多重複對抗', ev.maxMeet + ' <small>次（上限 ' + k + '）</small>'],
+    ['全新組合', ev.uniquePairs + ' <small>／ ' + (N * (N - 1) / 2) + ' 組</small>']
+  ];
+  $('#cards').innerHTML = cards.map(c => `<div class="card"><div class="k">${c[0]}</div><div class="v">${c[1]}</div></div>`).join('');
+
+  $('#view-main').innerHTML = renderMain(ev, N, M);
+  $('#view-teams').innerHTML = renderTeams(ev, N, M);
+  $('#view-stats').innerHTML = renderStats(ev, N, M, k);
+  $('#csvBox').value = buildCSV(ev, N, M);
+
+  if (!valid){
+    let extra = '';
+    if (ev.cPen !== 0) extra += '<li>有回合的關卡人數不是 0 或 2（該回合會有小隊落單或三隊同關）。</li>';
+    if (ev.excess !== 0) extra += `<li>有對戰組合超過 ${k} 次（最多出現 ${ev.maxMeet} 次）。</li>`;
+    extra += '<li>建議：把「最多對抗次數」調成 2～3 次、關卡數往 <code>小隊數−1</code> 靠近，或再按一次「換一種排法」。</li>';
+    $('#issues').innerHTML = `<ul class="issues">${extra}</ul>`;
+  } else {
+    $('#issues').innerHTML = '';
+  }
+}
+
+/* ============ 事件 ============ */
+function toast(msg){
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 1600);
+}
+
+let busy = false;
+async function generate(){
+  if (busy) return;
+  const N = parseInt(teamsEl.value, 10);
+  const M = parseInt(stationsEl.value, 10);
+  const k = parseInt(repeatEl.value, 10);
+
+  const problems = validate(N, M, k);
+  if (problems.length){
+    $('#issues').innerHTML = `<ul class="issues">${problems.map(p => `<li>${p}</li>`).join('')}</ul>`;
+    $('#result').hidden = true;
+    $('#status').textContent = '請先修正上面的參數。';
+    return;
+  }
+
+  busy = true;
+  goBtn.disabled = true; againBtn.disabled = true;
+  $('#issues').innerHTML = '';
+  $('#status').innerHTML = '<span class="spinner"></span><span id="stxt">計算中…</span>';
+  await new Promise(r => setTimeout(r, 20));
+
+  const seed = (Math.random() * 1e9) | 0;
+  const res = await solveAsync(N, M, k, seed, n => {
+    const s = $('#stxt');
+    if (s) s.textContent = `計算中…（第 ${n} 次嘗試）`;
+  });
+
+  render(res, N, M, k, seed);
+  busy = false;
+  goBtn.disabled = false; againBtn.disabled = false;
+}
+
+goBtn.addEventListener('click', generate);
+againBtn.addEventListener('click', generate);
+[teamsEl, stationsEl, repeatEl].forEach(el => {
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') generate(); });
+});
+
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b === btn));
+    const v = btn.dataset.view;
+    ['main', 'teams', 'stats', 'csv'].forEach(name => {
+      const el = document.getElementById('view-' + name);
+      if (el) el.hidden = (name !== v);
+    });
+  });
+});
+
+$('#copyCsv').addEventListener('click', async () => {
+  const text = $('#csvBox').value;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('CSV 已複製');
+  } catch (e) {
+    const box = $('#csvBox');
+    box.removeAttribute('readonly');
+    box.select();
+    try { document.execCommand('copy'); toast('CSV 已複製'); }
+    catch (e2) { toast('請手動選取文字複製'); }
+    box.setAttribute('readonly', 'readonly');
+  }
+});
+
+generate();
+</script>
+</body>
+</html>
